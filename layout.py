@@ -6,5 +6,5 @@ def display_header():
 
 def display_sidebar():
     """Creates a sidebar dropdown for navigation."""
-    menu = st.sidebar.selectbox("📌 Navigation", ["Home", "About"])
+    menu = st.sidebar.selectbox("📌 Navigation", ["", "Home", "About"])  # Default to empty string
     return menu
