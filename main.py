@@ -12,7 +12,7 @@ def load_css():
 
 def main():
     # Set page title and layout
-    st.set_page_config(page_title="503B WATCH", layout="wide")
+    st.set_page_config(page_title="503B WATCH", layout="wide", initial_sidebar_state="collapsed")
 
     # Load styles
     load_css()
