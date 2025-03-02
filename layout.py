@@ -1,11 +1,19 @@
 import streamlit as st
 
+# Inject custom CSS to make the sidebar smaller
+st.markdown("""
+    <style>
+        .css-1d391kg {  /* This is the class for the sidebar */
+            width: 150px; /* Set the width to a smaller value */
+        }
+    </style>
+""", unsafe_allow_html=True)
+
 def display_header():
     """Displays the application header."""
     st.title("🔍 503B Watch")
 
 def display_sidebar():
     """Creates a sidebar dropdown for navigation."""
-    # Placeholder to simulate the menu being closed or not selected
-    menu = st.sidebar.selectbox("📌 Navigation", ["Select an option", "Home", "About"])
+    menu = st.sidebar.selectbox("📌 Navigation", ["Home", "About"])
     return menu
