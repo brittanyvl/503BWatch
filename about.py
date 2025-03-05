@@ -17,7 +17,7 @@ def about_page():
     **503B Watch** focuses on key operational metrics, including:
 
     - **Open 503Bs:** Total count of currently operating compounding facilities.
-    - **% Compounding Sterile Drugs:** Share of facilities specializing in sterile compounding.
+    - **% Compounding Sterile Drugs from Bulk API:** All 503B Pharmacies are required to prepare at least (1) sterile human compound; this metric measures how many facilities intend to compound sterile using bulk drug API.
     - **% Uninspected by FDA:** Proportion of facilities that have not yet been inspected.
     - **% with FDA Recalls:** Percentage of facilities that have experienced product recalls.
     - **% with 483s Issued:** Fraction of facilities that have received FDA Form 483 observations.

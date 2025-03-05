@@ -19,7 +19,7 @@ def home_page():
             st.metric("Open 503Bs", metric_total_pharmacies)
 
         with col2:
-            st.metric("% Compounding Sterile", f"{metric_percent_intend_sterile}%")
+            st.metric("% Sterile with Bulk API", f"{metric_percent_intend_sterile}%")
 
         with col3:
             st.metric("% Uninspected by FDA", f"{metric_percent_fda_uninspected}%")
