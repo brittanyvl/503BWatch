@@ -4,6 +4,8 @@ import layout
 import about  # Import the about page
 import home  # Import the home page
 
+st.set_page_config(page_title="503B WATCH", layout="wide", initial_sidebar_state="collapsed")
+
 def load_css():
     """Load external CSS file."""
     css_path = Path(__file__).parent / "style.css"
@@ -12,7 +14,6 @@ def load_css():
 
 def main():
     # Set page title and layout
-    st.set_page_config(page_title="503B WATCH", layout="wide", initial_sidebar_state="collapsed")
 
     # Load styles
     load_css()
