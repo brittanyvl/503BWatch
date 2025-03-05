@@ -1,5 +1,8 @@
 import streamlit as st
 
+st.set_page_config(page_title="503B WATCH", layout="wide", initial_sidebar_state="collapsed")
+
+
 # Inject custom CSS to make the sidebar smaller
 st.markdown("""
     <style>
