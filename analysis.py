@@ -4,7 +4,7 @@ import altair as alt
 data = data_loader.load_data()
 
 # Create Data for Metrics at top of the home page
-metric_total_pharmacies = len(data)
+metric_total_pharmacies = len(data['Facility'])
 
 # Round the percentage metrics to 2 decimal places
 metric_percent_fda_uninspected = round((data['no_fda_inspections'].mean()) * 100, 2)
