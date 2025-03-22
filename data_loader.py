@@ -5,7 +5,10 @@ import FDA
 def load_data():
     # Read in current raw file
 
-    data = pd.read_excel("Data/FDA_503B/503B_cleaned_2025-03-15.xlsx")
+    data = pd.read_excel("Data/FDA_503B/503B_cleaned_2025-03-22.xlsx")
+
+    # Fix the N/As that are still escaping the main scrape
+    data['post_inspection_action'] = data['post_inspection_action'].str.strip()
     # Clean file
     #data = FDA.clean_fda_503b_list(data)
 
