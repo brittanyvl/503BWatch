@@ -10,7 +10,7 @@ def home_page():
 
     st.header("Active Bulk Compounding Pharmacies")
     st.write("A data app by [Brittany Campos](https://www.linkedin.com/in/brittanycampos/)")
-    st.info("Last Updated 04/05/2025 | ⚠️ The FDA did not update on schedule 04/04 and has not posted since 03/26/2025.")
+    st.info("Last Updated 04/12/2025.")
 
     if 'data' in st.session_state:
         col1, col2, col3, col4, col5 = st.columns(5)
