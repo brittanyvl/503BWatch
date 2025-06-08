@@ -24,13 +24,13 @@ latest_date = df["scanned_date"].max()
 latest_snapshot = df[df["scanned_date"] == latest_date]
 
 # ─────────────── HEADER
-st.title("🔍 503B Watch Dashboard")
+st.title("🔍 503B Watch")
 st.markdown("""
-Welcome to **503B Watch**, a community-maintained dashboard for monitoring FDA-registered **503B outsourcing facilities**.
+Welcome to **503B Watch**, a free dashboard for monitoring FDA-registered **503B outsourcing pharmacy facilities**.
 
-We track inspections, recalls, and facility activity over time using publicly available FDA data.
+I track inspections, recalls, and facility activity over time using publicly available FDA data.
 
-Built with ❤️ by [**Brittany Campos**](https://www.linkedin.com/in/brittanycampos/)
+Built by [**Brittany Campos**](https://www.linkedin.com/in/brittanycampos/)
 """)
 
 # ─────────────── TABS
