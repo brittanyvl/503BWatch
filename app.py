@@ -161,18 +161,22 @@ with tab1:
 with tab2:
     st.markdown("## 🧪 Inspections Overview")
 
-    # ── Uninspected KPI text
+    # ── % Without Inspection
     uninspected_pct = round(
         latest_snapshot["no_fda_inspections"].astype(str).str.lower().eq("true").mean() * 100, 2
     )
     st.info(f"**{uninspected_pct}% of facilities have never been inspected by the FDA.** See the list below.")
 
-    # ── Uninspected Facilities Table
+    # ── Table: Uninspected Facilities
     st.markdown("### 🏥 Uninspected Facilities")
     uninspected = latest_snapshot[
         latest_snapshot["no_fda_inspections"].astype(str).str.lower() == "true"
     ].sort_values(by="initial_registration_date", ascending=False)
-    st.dataframe(uninspected[["pharmacy_name", "license_state", "initial_registration_date", "Facility"]])
+
+    st.dataframe(
+        uninspected[["pharmacy_name", "license_state", "initial_registration_date", "Facility"]],
+        use_container_width=True
+    )
 
     # ── Post-Inspection KPIs
     st.markdown("## 📑 Post-Inspection Actions")
@@ -211,7 +215,7 @@ with tab2:
                  condition=lambda row: (row["post_inspection_action"] or "").upper() in ["NO ACTION", "FMD-145 LETTER ISSUED"],
                  key_prefix="insp_noaction", scope=inspected_scope, disable_spark=True)
 
-    # ── Area Chart
+    # ── Area Chart for Monthly Action Trends
     st.markdown("### 📈 Monthly Breakdown of Post-Inspection Outcomes")
 
     action_df = df.copy()
@@ -227,7 +231,7 @@ with tab2:
     monthly["pct"] = monthly["count"] / total_per_month * 100
 
     color_map = {
-        "Not Inspected": "#4B4B4B",  # dark gray
+        "Not Inspected": "#4B4B4B",
         "OPEN": "#90CAF9",
         "UNTITLED LETTER ISSUED": "#FFD54F",
         "REGULATORY MEETING HELD": "#FFB74D",
@@ -257,7 +261,7 @@ with tab2:
     )
     st.plotly_chart(fig, use_container_width=True)
 
-    # ── Facilities w/ Warning Letters
+    # ── Facilities with Warning Letters
     st.markdown("### 🧾 Facilities with Warning Letters")
     warning_df = latest_snapshot[
         (latest_snapshot["post_inspection_action"].astype(str).str.upper() == "WARNING LETTER ISSUED")
@@ -266,49 +270,66 @@ with tab2:
     if warning_df.empty:
         st.write("No facilities with warning letters this week.")
     else:
-        st.dataframe(warning_df[["pharmacy_name", "license_state", "post_inspection_action_date", "Facility"]])
+        st.dataframe(warning_df[[
+            "pharmacy_name", "license_state", "post_inspection_action_date", "Facility"
+        ]])
 
-    # ── Timeline: Last Inspection Date
-    st.markdown("### 🗓️ Timeline of Last FDA Inspections")
+    # ── FIXED: Timeline of Inspections (original version)
+    st.markdown("### 🗓️ Timeline of Inspections")
+    inspected_only = latest_snapshot[
+        latest_snapshot["no_fda_inspections"].astype(str).str.lower() != "true"
+    ].copy()
 
-    inspected_only = latest_snapshot[latest_snapshot["no_fda_inspections"].astype(str).str.lower() != "true"].copy()
     inspected_only["last_fda_inspection_date"] = pd.to_datetime(inspected_only["last_fda_inspection_date"], errors="coerce")
-    inspected_only["post_inspection_action_date"] = pd.to_datetime(inspected_only["post_inspection_action_date"], errors="coerce")
-
-    inspected_only = inspected_only.dropna(subset=["last_fda_inspection_date"])
-    inspected_only["days_since"] = (latest_date - inspected_only["last_fda_inspection_date"]).dt.days
+    inspected_only["post_inspection_action"] = (
+        inspected_only["post_inspection_action"]
+        .replace(["N/A", "n/a"], None)
+        .fillna("Not Inspected")
+    )
+    inspected_only["days_since"] = (pd.to_datetime(latest_date) - inspected_only["last_fda_inspection_date"]).dt.days
     inspected_only["months_since"] = (inspected_only["days_since"] / 30.44).round(1)
-    inspected_only["years_since"] = (inspected_only["days_since"] / 365.25).round(2)
+    inspected_only["years_since"] = (inspected_only["days_since"] / 365.25).round(1)
 
-    inspected_only["hover"] = (
-        "<b>Pharmacy:</b> " + inspected_only["pharmacy_name"].astype(str) +
-        "<br><b>Facility:</b> " + inspected_only["Facility"].astype(str) +
-        "<br><b>Last Inspection:</b> " + inspected_only["last_fda_inspection_date"].dt.date.astype(str) +
-        "<br><b>Post Action:</b> " + inspected_only["post_inspection_action"].fillna("None") +
-        "<br><b>Post Action Date:</b> " + inspected_only["post_inspection_action_date"].dt.date.astype(str) +
-        "<br><br><b>Days Since:</b> " + inspected_only["days_since"].astype(str) +
-        "<br><b>Months Since:</b> " + inspected_only["months_since"].astype(str) +
-        "<br><b>Years Since:</b> " + inspected_only["years_since"].astype(str)
+    fig = px.scatter(
+        inspected_only,
+        x="last_fda_inspection_date",
+        y="pharmacy_name",
+        color="post_inspection_action",
+        color_discrete_map=color_map,
+        hover_data={
+            "pharmacy_name": True,
+            "Facility": True,
+            "last_fda_inspection_date": True,
+            "post_inspection_action": True,
+            "post_inspection_action_date": True,
+            "days_since": True,
+            "months_since": True,
+            "years_since": True,
+        },
+        title="Timeline of FDA Inspections by Post-Inspection Action",
+        labels={"last_fda_inspection_date": "Inspection Date"}
     )
+    fig.update_traces(marker=dict(size=8, opacity=0.8))
+    fig.update_layout(height=450, xaxis_title="Date", yaxis_title=None)
+    st.plotly_chart(fig, use_container_width=True)
 
-    timeline_fig = go.Figure()
-    timeline_fig.add_trace(go.Scatter(
-        x=inspected_only["last_fda_inspection_date"],
-        y=[1] * len(inspected_only),  # flat line
-        mode="markers",
-        marker=dict(size=8, color="#1f77b4"),
-        hoverinfo="text",
-        hovertext=inspected_only["hover"],
-    ))
-    timeline_fig.update_layout(
-        title="Timeline of Last FDA Inspections",
-        xaxis_title="Inspection Date",
-        yaxis=dict(visible=False),
-        height=300,
-        margin=dict(l=20, r=20, t=40, b=20)
+    # ── Full Table of Inspected Facilities
+    st.markdown("### 📋 Full Table of Inspected Facilities")
+    inspected_full = inspected_only.sort_values(by="last_fda_inspection_date", ascending=False)
+
+    st.dataframe(
+        inspected_full[
+            [
+                "pharmacy_name",
+                "license_state",
+                "last_fda_inspection_date",
+                "post_inspection_action",
+                "post_inspection_action_date",
+                "Facility"
+            ]
+        ],
+        use_container_width=True
     )
-    st.plotly_chart(timeline_fig, use_container_width=True)
-
 
 # ═══════════════════════════════════════════════════
 # 🚨 RECALLS TAB
