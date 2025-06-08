@@ -86,7 +86,7 @@ def sparkline_data(column, pct=False, condition=None, scope=None):
         chart_data["value"] *= 100
     return chart_data
 
-def kpi_card(label, column, pct=False, condition=None, key_prefix="kpi", scope=None):
+def kpi_card(label, column, pct=False, condition=None, key_prefix="kpi", scope=None, disable_spark=False):
     snap_scope = latest_snapshot if scope is None else latest_snapshot[scope(latest_snapshot)]
     prev_scope = previous_snapshot if scope is None else previous_snapshot[scope(previous_snapshot)]
 
@@ -107,9 +107,12 @@ def kpi_card(label, column, pct=False, condition=None, key_prefix="kpi", scope=N
         else f"no change vs last week"
     )
     delta_color = "normal" if delta != 0 else "off"
-    chart = sparkline_data(column, pct=pct, condition=condition, scope=scope)
     st.metric(label, f"{curr_display}{suffix}", delta=delta_txt, delta_color=delta_color)
-    render_sparkline(chart, force_pct=pct, key=key_prefix)
+
+    if not disable_spark:
+        chart = sparkline_data(column, pct=pct, condition=condition, scope=scope)
+        render_sparkline(chart, force_pct=pct, key=key_prefix)
+
 
 # ═══════════════════════════════════════════════════
 # 🏠 HOME TAB
@@ -154,55 +157,114 @@ with tab1:
         file_name=f"503BWatch_{latest_date.date()}.csv",
         mime="text/csv"
     )
-
 # ═══════════════════════════════════════════════════
 # 🧪 INSPECTIONS TAB
 # ═══════════════════════════════════════════════════
+# 🧪 INSPECTIONS TAB
 with tab2:
-    st.markdown("## 🚨 Inspections Overview")
+    import plotly.express as px  # ✅ FIX: Required for the area chart
 
-    # Info bubble for % uninspected
-    total_facilities = len(latest_snapshot)
-    uninspected_count = latest_snapshot["no_fda_inspections"].astype(str).str.lower().eq("true").sum()
-    pct_uninspected = round((uninspected_count / total_facilities) * 100, 1) if total_facilities > 0 else 0
-    st.info(f"**{pct_uninspected}%** of facilities have never been inspected by the FDA. "
-            f"See the full list of these facilities below.")
+    st.markdown("## 🧪 Inspections Overview")
 
-    # Table: Uninspected Facilities
+    # ℹ️ Info for uninspected
+    uninspected_pct = round(
+        latest_snapshot["no_fda_inspections"].astype(str).str.lower().eq("true").mean() * 100, 2
+    )
+    st.info(f"**{uninspected_pct}% of facilities have never been inspected by the FDA.** See the list below.")
+
+    # 📋 Table of uninspected facilities, sorted by most recent registration
     st.markdown("### 🏥 Uninspected Facilities")
-    uninspected = latest_snapshot[latest_snapshot["no_fda_inspections"].astype(str).str.lower() == "true"]
+    uninspected = latest_snapshot[
+        latest_snapshot["no_fda_inspections"].astype(str).str.lower() == "true"
+    ].sort_values(by="initial_registration_date", ascending=False)
     st.dataframe(uninspected[["pharmacy_name", "license_state", "initial_registration_date", "Facility"]])
 
-    # Post-Inspection KPIs
-    st.markdown("## 🧾 Post-Inspection Actions")
-    st.info("The following KPIs reflect only facilities that **have been inspected** by the FDA.")
+    # 📊 Post-Inspection KPIs for INSPECTED ONLY
+    st.markdown("## 📑 Post-Inspection Actions")
+    st.caption("Metrics below are based on **facilities that have been inspected.**")
+
     inspected_scope = lambda df: df["no_fda_inspections"].astype(str).str.lower() != "true"
 
-    col1, col2, col3 = st.columns(3)
+    kpi_cols = st.columns(6)
 
-    with col1:
+    with kpi_cols[0]:
         kpi_card("% w/ Open Action", "post_inspection_action", pct=True,
                  condition=lambda row: (row["post_inspection_action"] or "").upper() == "OPEN",
-                 key_prefix="open_action", scope=inspected_scope)
-        kpi_card("% w/ Form 483", "form_483_issued", pct=True,
-                 condition=lambda row: str(row["form_483_issued"]).lower() == "true",
-                 key_prefix="form483", scope=inspected_scope)
+                 key_prefix="insp_open", scope=inspected_scope, disable_spark=True)
 
-    with col2:
+    with kpi_cols[1]:
+        kpi_card("% w/ 483", "form_483_issued", pct=True,
+                 condition=lambda row: str(row["form_483_issued"]).lower() == "true",
+                 key_prefix="insp_483", scope=inspected_scope, disable_spark=True)
+
+    with kpi_cols[2]:
         kpi_card("% w/ Warning Letter", "post_inspection_action", pct=True,
                  condition=lambda row: (row["post_inspection_action"] or "").upper() == "WARNING LETTER ISSUED",
-                 key_prefix="warn", scope=inspected_scope)
-        kpi_card("% w/ Regulatory Meeting", "post_inspection_action", pct=True,
-                 condition=lambda row: (row["post_inspection_action"] or "").upper() == "REGULATORY MEETING HELD",
-                 key_prefix="regmeet", scope=inspected_scope)
+                 key_prefix="insp_warn", scope=inspected_scope, disable_spark=True)
 
-    with col3:
+    with kpi_cols[3]:
+        kpi_card("% w/ Regulatory Mtg", "post_inspection_action", pct=True,
+                 condition=lambda row: (row["post_inspection_action"] or "").upper() == "REGULATORY MEETING HELD",
+                 key_prefix="insp_reg", scope=inspected_scope, disable_spark=True)
+
+    with kpi_cols[4]:
         kpi_card("% w/ Untitled Letter", "post_inspection_action", pct=True,
                  condition=lambda row: (row["post_inspection_action"] or "").upper() == "UNTITLED LETTER ISSUED",
-                 key_prefix="untitled", scope=inspected_scope)
+                 key_prefix="insp_untitled", scope=inspected_scope, disable_spark=True)
+
+    with kpi_cols[5]:
         kpi_card("% w/ No Action", "post_inspection_action", pct=True,
                  condition=lambda row: (row["post_inspection_action"] or "").upper() in ["NO ACTION", "FMD-145 LETTER ISSUED"],
-                 key_prefix="noaction", scope=inspected_scope)
+                 key_prefix="insp_noaction", scope=inspected_scope, disable_spark=True)
+
+    # 📈 Area Chart: Monthly Post-Inspection Actions
+    st.markdown("### 📈 Monthly Breakdown of Post-Inspection Outcomes")
+
+    action_df = df.copy()
+    action_df["month"] = action_df["scanned_date"].dt.to_period("M").dt.to_timestamp()
+    action_df["action_group"] = action_df["post_inspection_action"].fillna("Not Inspected")
+
+    monthly = (
+        action_df
+        .groupby(["month", "action_group"])
+        .size()
+        .reset_index(name="count")
+    )
+
+    total_per_month = monthly.groupby("month")["count"].transform("sum")
+    monthly["pct"] = monthly["count"] / total_per_month * 100
+
+    color_map = {
+        "Not Inspected": "#4B4B4B",               # dark gray
+        "OPEN": "#90CAF9",                        # light blue
+        "UNTITLED LETTER ISSUED": "#FFD54F",      # yellow
+        "REGULATORY MEETING HELD": "#FFB74D",     # orange
+        "FMD-145 LETTER ISSUED": "#F57C00",       # dark orange
+        "WARNING LETTER ISSUED": "#E53935",       # red
+        "NO ACTION": "#A5D6A7",                   # light green neutral
+    }
+
+    fig = px.area(
+        monthly,
+        x="month",
+        y="pct",
+        color="action_group",
+        line_group="action_group",
+        groupnorm="percent",
+        labels={"pct": "% of Facilities", "month": "Month", "action_group": "Action"},
+        color_discrete_map=color_map,
+    )
+
+    fig.update_layout(
+        yaxis_tickformat=".0f",
+        yaxis_title="Percent of Facilities",
+        xaxis_title="Month",
+        height=420,
+        legend_title="Post Inspection Action",
+        margin=dict(l=20, r=20, t=20, b=20),
+        legend_traceorder="normal"
+    )
+    st.plotly_chart(fig, use_container_width=True)
 
 # ═══════════════════════════════════════════════════
 # 🚨 RECALLS TAB
