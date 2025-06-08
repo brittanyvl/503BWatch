@@ -268,36 +268,47 @@ with tab2:
     else:
         st.dataframe(warning_df[["pharmacy_name", "license_state", "post_inspection_action_date", "Facility"]])
 
-    # ── Line Distribution: Days Since Last Inspection
-    st.markdown("### ⏱️ Time Since Last Inspection")
+    # ── Timeline: Last Inspection Date
+    st.markdown("### 🗓️ Timeline of Last FDA Inspections")
+
     inspected_only = latest_snapshot[latest_snapshot["no_fda_inspections"].astype(str).str.lower() != "true"].copy()
+    inspected_only["last_fda_inspection_date"] = pd.to_datetime(inspected_only["last_fda_inspection_date"], errors="coerce")
     inspected_only["post_inspection_action_date"] = pd.to_datetime(inspected_only["post_inspection_action_date"], errors="coerce")
-    inspected_only["days_since"] = (pd.to_datetime(latest_date) - inspected_only["post_inspection_action_date"]).dt.days
 
-    # Bin into 30-day intervals
-    bin_size = 30
-    inspected_only["bin"] = (inspected_only["days_since"] // bin_size) * bin_size
-    dist_df = inspected_only.groupby("bin").size().reset_index(name="count")
+    inspected_only = inspected_only.dropna(subset=["last_fda_inspection_date"])
+    inspected_only["days_since"] = (latest_date - inspected_only["last_fda_inspection_date"]).dt.days
+    inspected_only["months_since"] = (inspected_only["days_since"] / 30.44).round(1)
+    inspected_only["years_since"] = (inspected_only["days_since"] / 365.25).round(2)
 
-    line_fig = go.Figure()
-    line_fig.add_trace(go.Scatter(
-        x=dist_df["bin"],
-        y=dist_df["count"],
-        mode="lines+markers",
-        line=dict(color="#1f77b4", width=2),
-        marker=dict(size=6),
-        hovertemplate="<b>Days Since Last Inspection:</b> %{x}–%{x+29}<br><b>Facilities:</b> %{y}<extra></extra>",
-    ))
-
-    line_fig.update_layout(
-        title="Line Distribution of Days Since Last Inspection",
-        xaxis_title="Days Since Last Inspection (Binned)",
-        yaxis_title="Facility Count",
-        height=400,
-        margin=dict(l=20, r=20, t=40, b=20)
+    inspected_only["hover"] = (
+        "<b>Pharmacy:</b> " + inspected_only["pharmacy_name"].astype(str) +
+        "<br><b>Facility:</b> " + inspected_only["Facility"].astype(str) +
+        "<br><b>Last Inspection:</b> " + inspected_only["last_fda_inspection_date"].dt.date.astype(str) +
+        "<br><b>Post Action:</b> " + inspected_only["post_inspection_action"].fillna("None") +
+        "<br><b>Post Action Date:</b> " + inspected_only["post_inspection_action_date"].dt.date.astype(str) +
+        "<br><br><b>Days Since:</b> " + inspected_only["days_since"].astype(str) +
+        "<br><b>Months Since:</b> " + inspected_only["months_since"].astype(str) +
+        "<br><b>Years Since:</b> " + inspected_only["years_since"].astype(str)
     )
 
-    st.plotly_chart(line_fig, use_container_width=True)
+    timeline_fig = go.Figure()
+    timeline_fig.add_trace(go.Scatter(
+        x=inspected_only["last_fda_inspection_date"],
+        y=[1] * len(inspected_only),  # flat line
+        mode="markers",
+        marker=dict(size=8, color="#1f77b4"),
+        hoverinfo="text",
+        hovertext=inspected_only["hover"],
+    ))
+    timeline_fig.update_layout(
+        title="Timeline of Last FDA Inspections",
+        xaxis_title="Inspection Date",
+        yaxis=dict(visible=False),
+        height=300,
+        margin=dict(l=20, r=20, t=40, b=20)
+    )
+    st.plotly_chart(timeline_fig, use_container_width=True)
+
 
 # ═══════════════════════════════════════════════════
 # 🚨 RECALLS TAB
