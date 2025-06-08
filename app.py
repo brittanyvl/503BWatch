@@ -335,8 +335,63 @@ with tab2:
 # 🚨 RECALLS TAB
 # ═══════════════════════════════════════════════════
 with tab3:
-    st.markdown("## 🚧 Recalls")
-    st.info("Recall analysis coming soon!")
+    st.markdown("## 🚨 Recalls")
+
+    # Calculate % of facilities with recalls
+    recall_flag = latest_snapshot["fda_recall_conducted"].astype(str).str.lower()
+    recall_pct = recall_flag.eq("true").mean() * 100
+    recall_pct = round(recall_pct, 2)
+
+    st.info(
+        f"**{recall_pct}% of currently registered 503B facilities have conducted at least one recall.**\n\n"
+        "This is based on FDA's published **Outsourcing Facility Registration** data."
+    )
+
+    # Clean recall flags to labels
+    recall_labels = recall_flag.replace({
+        "true": "Recall Conducted",
+        "false": "No Recall"
+    })
+
+    # Count and compute percent
+    recall_counts = recall_labels.value_counts().reset_index()
+    recall_counts.columns = ["Status", "Count"]
+    recall_counts["Percent"] = recall_counts["Count"] / recall_counts["Count"].sum() * 100
+
+    import plotly.express as px
+    fig = px.bar(
+        recall_counts,
+        x="Percent",
+        y="Status",
+        orientation="h",
+        color="Status",
+        text=recall_counts["Percent"].round(1).astype(str) + "%",
+        color_discrete_map={
+            "Recall Conducted": "#1f77b4",
+            "No Recall": "#cccccc"
+        }
+    )
+    fig.update_traces(textposition="inside")
+    fig.update_layout(
+        height=200,
+        margin=dict(l=20, r=20, t=10, b=10),
+        showlegend=False,
+        xaxis=dict(range=[0, 100], title=""),
+        yaxis=dict(title=""),
+    )
+    st.plotly_chart(fig, use_container_width=True)
+
+    # Facilities with recall
+    st.markdown("### 🏥 Facilities with Recalls")
+
+    recalled_facs = latest_snapshot[recall_flag == "true"]
+    if recalled_facs.empty:
+        st.success("✅ No recalls recorded for facilities in the current dataset.")
+    else:
+        st.dataframe(
+            recalled_facs[["pharmacy_name", "license_state", "initial_registration_date", "Facility"]],
+            use_container_width=True
+        )
 
 # ═══════════════════════════════════════════════════
 # 📄 483s TAB
