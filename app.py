@@ -155,26 +155,29 @@ with tab1:
         file_name=f"503BWatch_{latest_date.date()}.csv",
         mime="text/csv"
     )
-
 # ═══════════════════════════════════════════════════
 # 🧪 INSPECTIONS TAB
 # ═══════════════════════════════════════════════════
 with tab2:
     st.markdown("## 🧪 Inspections Overview")
 
+    # ── Uninspected KPI text
     uninspected_pct = round(
         latest_snapshot["no_fda_inspections"].astype(str).str.lower().eq("true").mean() * 100, 2
     )
     st.info(f"**{uninspected_pct}% of facilities have never been inspected by the FDA.** See the list below.")
 
+    # ── Uninspected Facilities Table
     st.markdown("### 🏥 Uninspected Facilities")
     uninspected = latest_snapshot[
         latest_snapshot["no_fda_inspections"].astype(str).str.lower() == "true"
     ].sort_values(by="initial_registration_date", ascending=False)
     st.dataframe(uninspected[["pharmacy_name", "license_state", "initial_registration_date", "Facility"]])
 
+    # ── Post-Inspection KPIs
     st.markdown("## 📑 Post-Inspection Actions")
     st.caption("Metrics below are based on **facilities that have been inspected.**")
+
     inspected_scope = lambda df: df["no_fda_inspections"].astype(str).str.lower() != "true"
     kpi_cols = st.columns(6)
 
@@ -208,6 +211,7 @@ with tab2:
                  condition=lambda row: (row["post_inspection_action"] or "").upper() in ["NO ACTION", "FMD-145 LETTER ISSUED"],
                  key_prefix="insp_noaction", scope=inspected_scope, disable_spark=True)
 
+    # ── Area Chart
     st.markdown("### 📈 Monthly Breakdown of Post-Inspection Outcomes")
 
     action_df = df.copy()
@@ -223,7 +227,7 @@ with tab2:
     monthly["pct"] = monthly["count"] / total_per_month * 100
 
     color_map = {
-        "Not Inspected": "#4B4B4B",
+        "Not Inspected": "#4B4B4B",  # dark gray
         "OPEN": "#90CAF9",
         "UNTITLED LETTER ISSUED": "#FFD54F",
         "REGULATORY MEETING HELD": "#FFB74D",
@@ -242,7 +246,6 @@ with tab2:
         labels={"pct": "% of Facilities", "month": "Month", "action_group": "Action"},
         color_discrete_map=color_map,
     )
-
     fig.update_layout(
         yaxis_tickformat=".0f",
         yaxis_title="Percent of Facilities",
@@ -253,6 +256,48 @@ with tab2:
         legend_traceorder="normal"
     )
     st.plotly_chart(fig, use_container_width=True)
+
+    # ── Facilities w/ Warning Letters
+    st.markdown("### 🧾 Facilities with Warning Letters")
+    warning_df = latest_snapshot[
+        (latest_snapshot["post_inspection_action"].astype(str).str.upper() == "WARNING LETTER ISSUED")
+    ].sort_values(by="post_inspection_action_date", ascending=False)
+
+    if warning_df.empty:
+        st.write("No facilities with warning letters this week.")
+    else:
+        st.dataframe(warning_df[["pharmacy_name", "license_state", "post_inspection_action_date", "Facility"]])
+
+    # ── Line Distribution: Days Since Last Inspection
+    st.markdown("### ⏱️ Time Since Last Inspection")
+    inspected_only = latest_snapshot[latest_snapshot["no_fda_inspections"].astype(str).str.lower() != "true"].copy()
+    inspected_only["post_inspection_action_date"] = pd.to_datetime(inspected_only["post_inspection_action_date"], errors="coerce")
+    inspected_only["days_since"] = (pd.to_datetime(latest_date) - inspected_only["post_inspection_action_date"]).dt.days
+
+    # Bin into 30-day intervals
+    bin_size = 30
+    inspected_only["bin"] = (inspected_only["days_since"] // bin_size) * bin_size
+    dist_df = inspected_only.groupby("bin").size().reset_index(name="count")
+
+    line_fig = go.Figure()
+    line_fig.add_trace(go.Scatter(
+        x=dist_df["bin"],
+        y=dist_df["count"],
+        mode="lines+markers",
+        line=dict(color="#1f77b4", width=2),
+        marker=dict(size=6),
+        hovertemplate="<b>Days Since Last Inspection:</b> %{x}–%{x+29}<br><b>Facilities:</b> %{y}<extra></extra>",
+    ))
+
+    line_fig.update_layout(
+        title="Line Distribution of Days Since Last Inspection",
+        xaxis_title="Days Since Last Inspection (Binned)",
+        yaxis_title="Facility Count",
+        height=400,
+        margin=dict(l=20, r=20, t=40, b=20)
+    )
+
+    st.plotly_chart(line_fig, use_container_width=True)
 
 # ═══════════════════════════════════════════════════
 # 🚨 RECALLS TAB
