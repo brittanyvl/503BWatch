@@ -34,7 +34,7 @@ Built by [**Brittany Campos**](https://www.linkedin.com/in/brittanycampos/)
 """)
 
 # ─────────────── TABS
-tab1, tab2, tab3, tab4 = st.tabs(["🏠 Home", "🧪 Inspections", "🚨 Recalls", "📄 483s"])
+tab1, tab2, tab3, tab4 = st.tabs(["🏠 Home", "🔍 Inspections", "🚨 Recalls", "📄 483s"])
 
 # ═══════════════════════════════════════════════════
 # 💡 HELPER: Sparkline Renderer
@@ -215,8 +215,8 @@ with tab2:
                  condition=lambda row: (row["post_inspection_action"] or "").upper() in ["NO ACTION", "FMD-145 LETTER ISSUED"],
                  key_prefix="insp_noaction", scope=inspected_scope, disable_spark=True)
 
-    # ── Area Chart for Monthly Action Trends
-    st.markdown("### 📈 Monthly Breakdown of Post-Inspection Outcomes")
+    # ── Line Chart for Monthly Post-Inspection Outcomes
+    st.markdown("### 📈 Monthly Breakdown of Post-Inspection Outcomes (Count)")
 
     action_df = df.copy()
     action_df["month"] = action_df["scanned_date"].dt.to_period("M").dt.to_timestamp()
@@ -226,9 +226,7 @@ with tab2:
         .fillna("Not Inspected")
     )
 
-    monthly = action_df.groupby(["month", "action_group"]).size().reset_index(name="count")
-    total_per_month = monthly.groupby("month")["count"].transform("sum")
-    monthly["pct"] = monthly["count"] / total_per_month * 100
+    monthly_counts = action_df.groupby(["month", "action_group"]).size().reset_index(name="count")
 
     color_map = {
         "Not Inspected": "#4B4B4B",
@@ -240,25 +238,25 @@ with tab2:
         "NO ACTION": "#A5D6A7",
     }
 
-    fig = px.area(
-        monthly,
+    fig = px.line(
+        monthly_counts,
         x="month",
-        y="pct",
+        y="count",
         color="action_group",
-        line_group="action_group",
-        groupnorm="percent",
-        labels={"pct": "% of Facilities", "month": "Month", "action_group": "Action"},
+        markers=True,
+        labels={"count": "Facility Count", "month": "Month", "action_group": "Post-Inspection Action"},
         color_discrete_map=color_map,
+        title="Monthly Count of Post-Inspection Outcomes"
     )
+
     fig.update_layout(
-        yaxis_tickformat=".0f",
-        yaxis_title="Percent of Facilities",
-        xaxis_title="Month",
         height=420,
-        legend_title="Post Inspection Action",
-        margin=dict(l=20, r=20, t=20, b=20),
-        legend_traceorder="normal"
+        xaxis_title="Month",
+        yaxis_title="Facility Count",
+        legend_title="Action Type",
+        margin=dict(l=20, r=20, t=20, b=20)
     )
+
     st.plotly_chart(fig, use_container_width=True)
 
     # ── Facilities with Warning Letters
