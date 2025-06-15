@@ -34,7 +34,7 @@ Built by [**Brittany Campos**](https://www.linkedin.com/in/brittanycampos/)
 """)
 
 # ─────────────── TABS
-tab1, tab2, tab3, tab4 = st.tabs(["🏠 Home", "🔍 Inspections", "🚨 Recalls", "📄 483s"])
+tab1, tab2, tab3 = st.tabs(["🏠 Home", "🔍 Inspections", "🚨 Recalls"])
 
 # ═══════════════════════════════════════════════════
 # 💡 HELPER: Sparkline Renderer
@@ -116,38 +116,78 @@ def kpi_card(label, column, pct=False, condition=None, key_prefix="kpi", scope=N
         render_sparkline(chart, force_pct=pct, key=key_prefix)
 
 # ═══════════════════════════════════════════════════
-# 🏠 HOME TAB
+# 🏠 HOME TAB (UPDATED)
 # ═══════════════════════════════════════════════════
 with tab1:
-    st.markdown("## 📊 This Week in 503B")
+    st.title("🔍 503B Watch")
 
+    st.markdown("""
+    Welcome to **503B Watch**, a free dashboard for monitoring FDA-registered **503B outsourcing pharmacy facilities**.
+
+    I track inspections, recalls, and facility activity over time using publicly available FDA data.
+
+    Built by [**Brittany Campos**](https://www.linkedin.com/in/brittanycampos/)
+    """)
+
+    # ── KPI Row
     col1, col2, col3, col4, col5 = st.columns(5)
 
     with col1:
-        kpi_card("Open 503Bs", "Facility", pct=False, key_prefix="open")
+        kpi_card("Open 503Bs", "Facility", pct=False, key_prefix="open", disable_spark=True)
 
     with col2:
-        kpi_card("% Sterile w/ Bulk API", "intends_to_compound_sterile", pct=True, key_prefix="sterile")
+        kpi_card("% Sterile w/ Bulk API", "intends_to_compound_sterile", pct=True, key_prefix="sterile", disable_spark=True)
 
     with col3:
-        kpi_card("% Uninspected", "no_fda_inspections", pct=True, key_prefix="uninspected")
+        kpi_card("% Uninspected", "no_fda_inspections", pct=True, key_prefix="uninspected", disable_spark=True)
 
     with col4:
-        kpi_card("% w/ Recalls", "fda_recall_conducted", pct=True, key_prefix="recalls")
+        kpi_card("% w/ Recalls", "fda_recall_conducted", pct=True, key_prefix="recalls", disable_spark=True)
 
     with col5:
-        kpi_card("% w/ 483s", "form_483_issued", pct=True, key_prefix="483")
+        kpi_card("% w/ 483s", "form_483_issued", pct=True, key_prefix="483", disable_spark=True)
 
-    st.markdown("### 🆕 New & ⚠️ Missing Facilities")
+    # ── Facility Changes This Week
+    st.markdown("### 📊 Facility Status Changes This Week")
+
     new_facs = latest_snapshot[~latest_snapshot["Facility"].isin(previous_snapshot["Facility"])]
     missing_facs = previous_snapshot[~previous_snapshot["Facility"].isin(latest_snapshot["Facility"])]
 
-    with st.expander(f"🆕 {len(new_facs)} New Facilities This Week"):
-        st.dataframe(new_facs)
+    df_sorted = df.sort_values("scanned_date")
 
-    with st.expander(f"⚠️ {len(missing_facs)} Missing Facilities This Week"):
-        st.dataframe(missing_facs)
+    first_inspections = df_sorted[df_sorted["no_fda_inspections"].astype(str).str.lower() != "true"]
+    first_inspections = first_inspections.groupby("Facility").first().reset_index()
+    first_inspected_this_week = first_inspections[first_inspections["scanned_date"] == latest_date]
 
+    recalls_true = df_sorted[df_sorted["fda_recall_conducted"].astype(str).str.lower() == "true"]
+    first_recalls = recalls_true.groupby("Facility").first().reset_index()
+    first_recalled_this_week = first_recalls[first_recalls["scanned_date"] == latest_date]
+
+    s1, s2 = st.columns(2)
+    with s1:
+        st.metric("🆕 New Facilities", value=f"{len(new_facs)} Added")
+    with s2:
+        st.metric("⚠️ Missing Facilities", value=f"{len(missing_facs)} Removed")
+
+    s3, s4 = st.columns(2)
+    with s3:
+        st.metric("🔍 First-Time Inspections", value=f"{len(first_inspected_this_week)} Facilities")
+    with s4:
+        st.metric("🚨 First-Time Recalls", value=f"{len(first_recalled_this_week)} Facilities")
+
+    with st.expander("🆕 View New Facilities"):
+        st.dataframe(new_facs[["pharmacy_name", "license_state", "initial_registration_date", "Facility"]])
+
+    with st.expander("⚠️ View Missing Facilities"):
+        st.dataframe(missing_facs[["pharmacy_name", "license_state", "initial_registration_date", "Facility"]])
+
+    with st.expander("🔍 View First-Time Inspections"):
+        st.dataframe(first_inspected_this_week[["pharmacy_name", "license_state", "last_fda_inspection_date", "Facility"]])
+
+    with st.expander("📋 View First-Time Recalls"):
+        st.dataframe(first_recalled_this_week[["pharmacy_name", "license_state", "Facility"]])
+
+    # ── Download Button
     st.markdown("### 📥 Download Most Recent Weekly File")
     st.download_button(
         "Download CSV of Latest Facilities",
@@ -155,28 +195,136 @@ with tab1:
         file_name=f"503BWatch_{latest_date.date()}.csv",
         mime="text/csv"
     )
+
+    # ── Historical KPI Trends Section
+    st.markdown("---")
+    st.markdown("### 📈 Historical KPI Trends")
+    st.caption("Click each metric below to explore its trend over time in more detail.")
+
+    def plot_kpi_history(column, pct=False, condition=None, scope=None, chart_type="line", label="Value", height=300):
+        chart = sparkline_data(column, pct=pct, condition=condition, scope=scope)
+
+        if chart_type == "bar":
+            fig = px.bar(
+                chart, x="scanned_date", y="value", text=chart["value"].round(1),
+                labels={"scanned_date": "Date", "value": label}
+            )
+            fig.update_traces(textposition="outside")
+        else:
+            fig = px.line(
+                chart, x="scanned_date", y="value", markers=True,
+                labels={"scanned_date": "Date", "value": label}
+            )
+
+        y_max = chart["value"].max()
+        y_range = [0, y_max * 1.15 if y_max else 1]  # some padding above max
+
+        fig.update_layout(
+            height=height,
+            margin=dict(l=10, r=10, t=30, b=10),
+            xaxis_title="Week",
+            yaxis_title=label,
+            yaxis=dict(range=y_range)
+        )
+        st.plotly_chart(fig, use_container_width=True)
+
+    with st.expander("📊 Open 503Bs"):
+        plot_kpi_history("Facility", pct=False, chart_type="bar", label="Facility Count", height=400)
+
+    with st.expander("🧪 % Sterile w/ Bulk API"):
+        plot_kpi_history("intends_to_compound_sterile", pct=True, label="Percent")
+
+    with st.expander("🔍 % Uninspected"):
+        plot_kpi_history("no_fda_inspections", pct=True, label="Percent")
+
+    with st.expander("🚨 % w/ Recalls"):
+        plot_kpi_history("fda_recall_conducted", pct=True, label="Percent")
+
+    with st.expander("📄 % w/ 483s"):
+        plot_kpi_history("form_483_issued", pct=True, label="Percent")
+
 # ═══════════════════════════════════════════════════
-# 🧪 INSPECTIONS TAB
+# 🔍 INSPECTIONS TAB
 # ═══════════════════════════════════════════════════
 with tab2:
-    st.markdown("## 🧪 Inspections Overview")
+    st.markdown("## 📊 Inspection KPIs")
 
-    # ── % Without Inspection
-    uninspected_pct = round(
-        latest_snapshot["no_fda_inspections"].astype(str).str.lower().eq("true").mean() * 100, 2
+    # Prepare datasets
+    inspections_df = latest_snapshot[["Facility", "initial_registration_date", "last_fda_inspection_date", "no_fda_inspections"]].copy()
+    inspections_df["initial_registration_date"] = pd.to_datetime(inspections_df["initial_registration_date"], errors="coerce")
+    inspections_df["last_fda_inspection_date"] = pd.to_datetime(inspections_df["last_fda_inspection_date"], errors="coerce")
+    inspections_df = inspections_df.dropna(subset=["initial_registration_date"])
+
+    # % never inspected (latest file only)
+    percent_uninspected = round(
+        inspections_df["no_fda_inspections"].astype(str).str.lower().eq("true").mean() * 100, 2
     )
-    st.info(f"**{uninspected_pct}% of facilities have never been inspected by the FDA.** See the list below.")
 
-    # ── Table: Uninspected Facilities
-    st.markdown("### 🏥 Uninspected Facilities")
-    uninspected = latest_snapshot[
-        latest_snapshot["no_fda_inspections"].astype(str).str.lower() == "true"
-    ].sort_values(by="initial_registration_date", ascending=False)
+    # Deduplicated inspections
+    deduped_inspections = inspections_df.dropna(subset=["last_fda_inspection_date"]).drop_duplicates(subset=["Facility", "last_fda_inspection_date"])
+    deduped_inspections["months_to_inspection"] = (deduped_inspections["last_fda_inspection_date"] - deduped_inspections["initial_registration_date"]).dt.days / 30.44
+    avg_months_to_inspection = round(deduped_inspections["months_to_inspection"].mean(), 1)
 
-    st.dataframe(
-        uninspected[["pharmacy_name", "license_state", "initial_registration_date", "Facility"]],
-        use_container_width=True
-    )
+    # YTD inspections
+    ytd_inspections = deduped_inspections[deduped_inspections["last_fda_inspection_date"].dt.year == latest_date.year]
+    num_ytd_inspections = ytd_inspections.shape[0]
+
+    # Avg inspections per year
+    if not deduped_inspections.empty:
+        deduped_inspections["year"] = deduped_inspections["last_fda_inspection_date"].dt.year
+        avg_inspections_per_year = round(deduped_inspections.groupby("year").size().mean(), 1)
+    else:
+        avg_inspections_per_year = 0.0
+
+    # ── Render KPI Row (4-wide) with short, wrapped labels
+    k1, k2, k3, k4 = st.columns(4)
+    with k1:
+        st.metric("📌\nNever Inspected", f"{percent_uninspected} %")
+    with k2:
+        st.metric("📆\nAvg Time to 1st Inspection", f"{avg_months_to_inspection} mo")
+    with k3:
+        st.metric("📅\nYTD Inspections", f"{num_ytd_inspections}")
+    with k4:
+        st.metric("📈\nAvg Inspections per Year", f"{avg_inspections_per_year}")
+
+    # ── Facility Expanders
+    st.markdown("### 🗂️ Facility Lists")
+
+    with st.expander("🚫 Uninspected Facilities"):
+        st.dataframe(
+            inspections_df[inspections_df["no_fda_inspections"].astype(str).str.lower() == "true"][
+                ["Facility", "initial_registration_date"]
+            ],
+            use_container_width=True
+        )
+
+    with st.expander("✅ Recently Inspected Facilities"):
+        inspected_latest = latest_snapshot[
+            latest_snapshot["no_fda_inspections"].astype(str).str.lower() != "true"
+        ].copy()
+        inspected_latest["last_fda_inspection_date"] = pd.to_datetime(inspected_latest["last_fda_inspection_date"], errors="coerce")
+        inspected_latest = inspected_latest.sort_values(by="last_fda_inspection_date", ascending=False)
+
+        st.dataframe(
+            inspected_latest[[
+                "Facility", "pharmacy_name", "license_state",
+                "last_fda_inspection_date", "post_inspection_action", "post_inspection_action_date"
+            ]],
+            use_container_width=True
+        )
+
+    with st.expander("📄 Facilities with Warning Letters"):
+        warning_df = latest_snapshot[
+            (latest_snapshot["post_inspection_action"].astype(str).str.upper() == "WARNING LETTER ISSUED")
+        ].copy()
+
+        warning_df["last_fda_inspection_date"] = pd.to_datetime(warning_df["last_fda_inspection_date"], errors="coerce")
+        warning_df = warning_df.sort_values(by="post_inspection_action_date", ascending=False)
+
+        st.dataframe(warning_df[[
+            "pharmacy_name", "license_state", "initial_registration_date",
+            "last_fda_inspection_date", "post_inspection_action", "post_inspection_action_date", "Facility"
+        ]], use_container_width=True)
 
     # ── Post-Inspection KPIs
     st.markdown("## 📑 Post-Inspection Actions")
@@ -186,148 +334,137 @@ with tab2:
     kpi_cols = st.columns(6)
 
     with kpi_cols[0]:
-        kpi_card("% w/ Open Action", "post_inspection_action", pct=True,
+        kpi_card("Open Action", "post_inspection_action", pct=True,
                  condition=lambda row: (row["post_inspection_action"] or "").upper() == "OPEN",
                  key_prefix="insp_open", scope=inspected_scope, disable_spark=True)
 
     with kpi_cols[1]:
-        kpi_card("% w/ 483", "form_483_issued", pct=True,
+        kpi_card("483 Issued", "form_483_issued", pct=True,
                  condition=lambda row: str(row["form_483_issued"]).lower() == "true",
                  key_prefix="insp_483", scope=inspected_scope, disable_spark=True)
 
     with kpi_cols[2]:
-        kpi_card("% w/ Warning Letter", "post_inspection_action", pct=True,
+        kpi_card("Warning Letter", "post_inspection_action", pct=True,
                  condition=lambda row: (row["post_inspection_action"] or "").upper() == "WARNING LETTER ISSUED",
                  key_prefix="insp_warn", scope=inspected_scope, disable_spark=True)
 
     with kpi_cols[3]:
-        kpi_card("% w/ Regulatory Mtg", "post_inspection_action", pct=True,
+        kpi_card("Reg Mtg Held", "post_inspection_action", pct=True,
                  condition=lambda row: (row["post_inspection_action"] or "").upper() == "REGULATORY MEETING HELD",
                  key_prefix="insp_reg", scope=inspected_scope, disable_spark=True)
 
     with kpi_cols[4]:
-        kpi_card("% w/ Untitled Letter", "post_inspection_action", pct=True,
+        kpi_card("Untitled Letter", "post_inspection_action", pct=True,
                  condition=lambda row: (row["post_inspection_action"] or "").upper() == "UNTITLED LETTER ISSUED",
                  key_prefix="insp_untitled", scope=inspected_scope, disable_spark=True)
 
     with kpi_cols[5]:
-        kpi_card("% w/ No Action", "post_inspection_action", pct=True,
+        kpi_card("No Action", "post_inspection_action", pct=True,
                  condition=lambda row: (row["post_inspection_action"] or "").upper() in ["NO ACTION", "FMD-145 LETTER ISSUED"],
                  key_prefix="insp_noaction", scope=inspected_scope, disable_spark=True)
 
-    # ── Line Chart for Monthly Post-Inspection Outcomes
-    st.markdown("### 📈 Monthly Breakdown of Post-Inspection Outcomes (Count)")
+    # ── Vertical 100% Stacked Bar Chart
+    st.markdown("### 📈 Post-Inspection Outcomes by Week")
 
     action_df = df.copy()
-    action_df["month"] = action_df["scanned_date"].dt.to_period("M").dt.to_timestamp()
-    action_df["action_group"] = (
-        action_df["post_inspection_action"]
-        .replace(["N/A", "n/a"], None)
-        .fillna("Not Inspected")
-    )
+    action_df["post_inspection_action"] = action_df["post_inspection_action"].replace(["N/A", "n/a"], None).fillna("Not Inspected")
+    action_df["week"] = action_df["scanned_date"].dt.to_period("W").dt.to_timestamp()
 
-    monthly_counts = action_df.groupby(["month", "action_group"]).size().reset_index(name="count")
+    chart_df = action_df[
+        action_df["no_fda_inspections"].astype(str).str.lower() != "true"
+    ].groupby(["week", "post_inspection_action"]).size().reset_index(name="count")
+
+    pivot_df = chart_df.pivot(index="week", columns="post_inspection_action", values="count").fillna(0)
+    percent_df = pivot_df.div(pivot_df.sum(axis=1), axis=0) * 100
+    percent_df = percent_df.reset_index().melt(id_vars="week", var_name="Post-Inspection Action", value_name="Percent")
 
     color_map = {
-        "Not Inspected": "#4B4B4B",
-        "OPEN": "#90CAF9",
-        "UNTITLED LETTER ISSUED": "#FFD54F",
-        "REGULATORY MEETING HELD": "#FFB74D",
-        "FMD-145 LETTER ISSUED": "#F57C00",
         "WARNING LETTER ISSUED": "#E53935",
-        "NO ACTION": "#A5D6A7",
+        "OPEN": "#888888",
+        "UNTITLED LETTER ISSUED": "#AAAAAA",
+        "REGULATORY MEETING HELD": "#BBBBBB",
+        "FMD-145 LETTER ISSUED": "#999999",
+        "NO ACTION": "#DDDDDD",
+        "Not Inspected": "#EEEEEE",
     }
 
-    fig = px.line(
-        monthly_counts,
-        x="month",
-        y="count",
-        color="action_group",
-        markers=True,
-        labels={"count": "Facility Count", "month": "Month", "action_group": "Post-Inspection Action"},
+    fig = px.bar(
+        percent_df,
+        x="week",
+        y="Percent",
+        color="Post-Inspection Action",
+        text=percent_df["Percent"].round(1).astype(str) + "%",
         color_discrete_map=color_map,
-        title="Monthly Count of Post-Inspection Outcomes"
     )
 
     fig.update_layout(
+        barmode="stack",
         height=420,
-        xaxis_title="Month",
-        yaxis_title="Facility Count",
+        xaxis_title="Week",
+        yaxis_title="Percentage of Inspected Facilities",
         legend_title="Action Type",
         margin=dict(l=20, r=20, t=20, b=20)
     )
-
+    fig.update_traces(textposition="inside", textfont_size=10)
     st.plotly_chart(fig, use_container_width=True)
 
-    # ── Facilities with Warning Letters
-    st.markdown("### 🧾 Facilities with Warning Letters")
-    warning_df = latest_snapshot[
-        (latest_snapshot["post_inspection_action"].astype(str).str.upper() == "WARNING LETTER ISSUED")
-    ].sort_values(by="post_inspection_action_date", ascending=False)
+    # ✅ NO redundant full inspected facility table
 
-    if warning_df.empty:
-        st.write("No facilities with warning letters this week.")
-    else:
-        st.dataframe(warning_df[[
-            "pharmacy_name", "license_state", "post_inspection_action_date", "Facility"
-        ]])
+# ═══════════════════════════════════════════════════
+# 🕒 Inspection Timeline Chart by Post-Inspection Action
+# ═══════════════════════════════════════════════════
+    st.markdown("### 🕒 Inspection Timeline")
 
-    # ── FIXED: Timeline of Inspections (original version)
-    st.markdown("### 🗓️ Timeline of Inspections")
-    inspected_only = latest_snapshot[
-        latest_snapshot["no_fda_inspections"].astype(str).str.lower() != "true"
-    ].copy()
+    timeline_df = latest_snapshot.copy()
+    timeline_df["last_fda_inspection_date"] = pd.to_datetime(timeline_df["last_fda_inspection_date"], errors="coerce")
+    timeline_df = timeline_df.dropna(subset=["last_fda_inspection_date"])
 
-    inspected_only["last_fda_inspection_date"] = pd.to_datetime(inspected_only["last_fda_inspection_date"], errors="coerce")
-    inspected_only["post_inspection_action"] = (
-        inspected_only["post_inspection_action"]
-        .replace(["N/A", "n/a"], None)
-        .fillna("Not Inspected")
+    # Clean action labels
+    timeline_df["action_clean"] = timeline_df["post_inspection_action"].fillna("No Action").str.upper()
+    timeline_df["action_clean"] = timeline_df["action_clean"].replace({
+        "FMD-145 LETTER ISSUED": "NO ACTION",
+        "N/A": "NO ACTION"
+    })
+
+    # Sort by date for better timeline flow
+    timeline_df = timeline_df.sort_values("last_fda_inspection_date")
+
+    # Define simplified color palette
+    action_colors = {
+        "WARNING LETTER ISSUED": "#E53935",   # red
+        "OPEN": "#888888",                    # dark gray
+        "REGULATORY MEETING HELD": "#AAAAAA", # medium gray
+        "UNTITLED LETTER ISSUED": "#BBBBBB",  # light gray
+        "NO ACTION": "#DDDDDD"                # lightest gray
+    }
+
+    # Fallback color if something is unexpected
+    timeline_df["color"] = timeline_df["action_clean"].map(action_colors).fillna("#CCCCCC")
+
+    fig = go.Figure()
+
+    for action in timeline_df["action_clean"].unique():
+        group = timeline_df[timeline_df["action_clean"] == action]
+        fig.add_trace(go.Scatter(
+            x=group["last_fda_inspection_date"],
+            y=group["Facility"],
+            mode="markers",
+            marker=dict(size=10, color=action_colors.get(action, "#CCCCCC")),
+            name=action.title(),
+            hovertemplate="<b>Facility:</b> %{y}<br><b>Inspected:</b> %{x|%b %d, %Y}<br><b>Action:</b> " + action.title() + "<extra></extra>"
+        ))
+
+    fig.update_layout(
+        height=600,
+        title="Timeline of FDA Inspections by Facility",
+        xaxis_title="Inspection Date",
+        yaxis_title="Facility",
+        yaxis=dict(showticklabels=False),
+        margin=dict(l=20, r=20, t=50, b=20),
+        legend_title="Post-Inspection Action"
     )
-    inspected_only["days_since"] = (pd.to_datetime(latest_date) - inspected_only["last_fda_inspection_date"]).dt.days
-    inspected_only["months_since"] = (inspected_only["days_since"] / 30.44).round(1)
-    inspected_only["years_since"] = (inspected_only["days_since"] / 365.25).round(1)
 
-    fig = px.scatter(
-        inspected_only,
-        x="last_fda_inspection_date",
-        y="pharmacy_name",
-        color="post_inspection_action",
-        color_discrete_map=color_map,
-        hover_data={
-            "pharmacy_name": True,
-            "Facility": True,
-            "last_fda_inspection_date": True,
-            "post_inspection_action": True,
-            "post_inspection_action_date": True,
-            "days_since": True,
-            "months_since": True,
-            "years_since": True,
-        },
-        title="Timeline of FDA Inspections by Post-Inspection Action",
-        labels={"last_fda_inspection_date": "Inspection Date"}
-    )
-    fig.update_traces(marker=dict(size=8, opacity=0.8))
-    fig.update_layout(height=450, xaxis_title="Date", yaxis_title=None)
     st.plotly_chart(fig, use_container_width=True)
-
-    # ── Full Table of Inspected Facilities
-    st.markdown("### 📋 Full Table of Inspected Facilities")
-    inspected_full = inspected_only.sort_values(by="last_fda_inspection_date", ascending=False)
-
-    st.dataframe(
-        inspected_full[
-            [
-                "pharmacy_name",
-                "license_state",
-                "last_fda_inspection_date",
-                "post_inspection_action",
-                "post_inspection_action_date",
-                "Facility"
-            ]
-        ],
-        use_container_width=True
-    )
 
 # ═══════════════════════════════════════════════════
 # 🚨 RECALLS TAB
@@ -390,10 +527,3 @@ with tab3:
             recalled_facs[["pharmacy_name", "license_state", "initial_registration_date", "Facility"]],
             use_container_width=True
         )
-
-# ═══════════════════════════════════════════════════
-# 📄 483s TAB
-# ═══════════════════════════════════════════════════
-with tab4:
-    st.markdown("## 🚧 Form 483 Reports")
-    st.info("483 insights coming soon!")
