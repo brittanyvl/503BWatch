@@ -26,7 +26,7 @@ latest_snapshot = df[df["scanned_date"] == latest_date]
 # ─────────────── HEADER
 st.title("🔍 503B Watch")
 st.markdown("""
-Welcome to **503B Watch**, a free dashboard for monitoring FDA-registered **503B outsourcing pharmacy facilities**.
+Welcome to **503B Watch**, a free tool for monitoring and searching FDA-registered **503B outsourcing pharmacy facilities**.
 
 I track inspections, recalls, and facility activity over time using the publicly available FDA 503B Outsourcing Facility List.
 
@@ -34,7 +34,7 @@ Built by [**Brittany Campos**](https://www.linkedin.com/in/brittanycampos/)
 """)
 
 # ─────────────── TABS
-tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["📰 This Week", "📅 Changes Over Time", "🔍 Inspections", "🧑‍⚖️ Post Inspection Actions", "🚨 Recalls", "ℹ️ About 503B Watch"])
+tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs(["📰 This Week", "📅 Changes Over Time", "🔬 Inspections", "📜 Post Inspection Actions", "🚨 Recalls", "🔍 Search 503Bs", "ℹ️ About 503B Watch"])
 
 # ═══════════════════════════════════════════════════
 #  HELPER: Sparkline Renderer
@@ -138,44 +138,61 @@ with tab1:
         kpi_card("% w/ 483s", "form_483_issued", pct=True, key_prefix="483", disable_spark=True)
 
     # ── Facility Changes This Week
-    st.markdown("#### Facility Status Changes This Week")
+    st.markdown("### 🔄 Facility Changes This Week")
 
+    # Compute change groups
     new_facs = latest_snapshot[~latest_snapshot["Facility"].isin(previous_snapshot["Facility"])]
     missing_facs = previous_snapshot[~previous_snapshot["Facility"].isin(latest_snapshot["Facility"])]
 
     df_sorted = df.sort_values("scanned_date")
 
+    # First-time inspections
     first_inspections = df_sorted[df_sorted["no_fda_inspections"].astype(str).str.lower() != "true"]
     first_inspections = first_inspections.groupby("Facility").first().reset_index()
     first_inspected_this_week = first_inspections[first_inspections["scanned_date"] == latest_date]
 
+    # First-time recalls
     recalls_true = df_sorted[df_sorted["fda_recall_conducted"].astype(str).str.lower() == "true"]
     first_recalls = recalls_true.groupby("Facility").first().reset_index()
     first_recalled_this_week = first_recalls[first_recalls["scanned_date"] == latest_date]
 
-    s1, s2 = st.columns(2)
-    with s1:
-        st.metric("🆕 New Facilities", value=f"{len(new_facs)} Added")
-    with s2:
-        st.metric("⚠️ Missing Facilities", value=f"{len(missing_facs)} Removed")
+    # Accordions with dynamic titles
+    with st.expander(f"🆕 {len(new_facs)} New Facilities This Week"):
+        if new_facs.empty:
+            st.info("No new facilities added this week.")
+        else:
+            st.dataframe(new_facs[["pharmacy_name", "license_state", "initial_registration_date", "Facility"]])
 
-    s3, s4 = st.columns(2)
-    with s3:
-        st.metric("🔍 First-Time Inspections", value=f"{len(first_inspected_this_week)} Facilities")
-    with s4:
-        st.metric("🚨 First-Time Recalls", value=f"{len(first_recalled_this_week)} Facilities")
+    with st.expander(f"⚠️ {len(missing_facs)} Missing Facilities This Week"):
+        if missing_facs.empty:
+            st.info("No facilities were removed this week.")
+        else:
+            st.dataframe(missing_facs[["pharmacy_name", "license_state", "initial_registration_date", "Facility"]])
 
-    with st.expander("🆕 View New Facilities"):
-        st.dataframe(new_facs[["pharmacy_name", "license_state", "initial_registration_date", "Facility"]])
+    with st.expander(f"🔍 {len(first_inspected_this_week)} First-Time Inspections This Week"):
+        if first_inspected_this_week.empty:
+            st.info("No facilities had a first-time inspection this week.")
+        else:
+            st.dataframe(first_inspected_this_week[["pharmacy_name", "license_state", "last_fda_inspection_date", "Facility"]])
 
-    with st.expander("⚠️ View Missing Facilities"):
-        st.dataframe(missing_facs[["pharmacy_name", "license_state", "initial_registration_date", "Facility"]])
+    with st.expander(f"🚨 {len(first_recalled_this_week)} First-Time Recalls This Week"):
+        if first_recalled_this_week.empty:
+            st.info("No facilities had a first-time recall this week.")
+        else:
+            st.dataframe(first_recalled_this_week[["pharmacy_name", "license_state", "Facility"]])
 
-    with st.expander("🔍 View First-Time Inspections"):
-        st.dataframe(first_inspected_this_week[["pharmacy_name", "license_state", "last_fda_inspection_date", "Facility"]])
+    # ── Preview  Dataset Viewer
+    st.markdown("### 🗂️ View All Facilities This Week")
 
-    with st.expander("📋 View First-Time Recalls"):
-        st.dataframe(first_recalled_this_week[["pharmacy_name", "license_state", "Facility"]])
+    st.dataframe(
+        latest_snapshot.sort_values("pharmacy_name")[[
+            "pharmacy_name", "license_state", "initial_registration_date",
+            "last_fda_inspection_date", "post_inspection_action",
+            "form_483_issued", "fda_recall_conducted", "Facility"
+        ]],
+        use_container_width=True,
+        hide_index=True
+    )
 
     # ── Download Button
     st.markdown("#### 📥 Download Most Recent Weekly File")
@@ -572,3 +589,105 @@ with tab5:
             recalled_facs[["pharmacy_name", "license_state", "initial_registration_date", "Facility"]],
             use_container_width=True
         )
+
+with tab6:
+    # ═══════════════════════════════════════════════════
+    #  PHARMACY SEARCH TAB
+    # ═══════════════════════════════════════════════════
+    st.markdown("##  🔍 503B Search")
+    st.caption("Search, filter, and export the current week's registered 503B pharmacy facilities.")
+
+    all_columns = latest_snapshot.columns.tolist()
+    default_cols = ["pharmacy_name", "license_state", "initial_registration_date", "Facility"]
+
+    # Layout: Column picker and search controls
+    with st.container():
+        selected_cols = st.multiselect(
+            "🧾 Select columns to display:",
+            options=all_columns,
+            default=default_cols
+        )
+
+        st.markdown("**🔍 Search Options**")
+
+        search_col = st.selectbox("Search in specific column (or All Columns):", options=["All Columns"] + all_columns)
+        search_term = st.text_input("Enter search term:").strip().lower()
+
+    # Apply search
+    if search_term:
+        if search_col == "All Columns":
+            filtered_df = latest_snapshot[
+                latest_snapshot.astype(str).apply(lambda row: row.str.lower().str.contains(search_term).any(), axis=1)
+            ]
+        else:
+            filtered_df = latest_snapshot[
+                latest_snapshot[search_col].astype(str).str.lower().str.contains(search_term)
+            ]
+    else:
+        filtered_df = latest_snapshot.copy()
+
+
+    # Highlight style (optional blue highlight)
+    def highlight_search(val):
+        if isinstance(val, str) and search_term and search_term in val.lower():
+            return "color: #1f77b4; font-weight: bold;"
+        return ""
+
+
+    # Styled dataframe
+    if not filtered_df.empty:
+        styled_df = filtered_df[selected_cols] if selected_cols else filtered_df
+        st.dataframe(
+            styled_df.style.applymap(highlight_search),
+            use_container_width=True,
+            hide_index=True
+        )
+    else:
+        st.warning("No matching facilities found.")
+
+    # Download
+    st.download_button(
+        label="📥 Download Filtered CSV",
+        data=filtered_df[selected_cols if selected_cols else all_columns].to_csv(index=False).encode("utf-8"),
+        file_name=f"PharmacySearch_{latest_date.date()}.csv",
+        mime="text/csv"
+    )
+
+with tab7:
+    st.markdown("### 📊 Reporting Methodology")
+    st.markdown("""
+**503B Watch** is powered by data published weekly by the U.S. Food & Drug Administration (FDA) on registered **503B outsourcing facilities**.
+
+This tool is built on top of my open-source project, **[Pharmacy License Bank](https://github.com/brittanyvl/PharmacyLicenseBank)**, which downloads, standardizes, and cleans the raw CSV data published by the FDA each week.
+
+The cleaned data is then:
+- Parsed and processed using **Python**
+- Loaded into an efficient, in-memory **DuckDB** database
+- Analyzed for trends, gaps, and inspection history
+- Visualized and deployed to the web through **Streamlit**
+
+Each week’s dataset is timestamped and versioned to allow historical tracking of facility activity. We formally began collecting data in March of 2025. 
+    """)
+
+    st.markdown("### 👤 About the Creator")
+    st.markdown("""
+Hi, I’m **Brittany Campos** — a software engineer and open data advocate with a passion for public health, transparency, and pharmaceutical compliance.
+
+I created 503B Watch to help **procurement professionals**, **providers**,  **journalists**, **regulators**, and the public better understand how compounding pharmacies are monitored by the FDA — and where gaps may still exist.
+
+I'm always happy to collaborate, answer questions, or provide technical support.
+
+📫 Connect with me on [LinkedIn](https://www.linkedin.com/in/brittanycampos/)
+    """)
+
+    st.markdown("### 🧠 Technologies Used")
+    st.markdown("""
+- **Python** for all data processing and app logic  
+- **Pandas** for cleaning and transforming the datasets  
+- **DuckDB** for fast SQL queries directly on CSVs  
+- **Plotly** for interactive charts  
+- **Streamlit** for building and deploying the dashboard  
+- **GitHub Actions** for automating weekly updates  
+- Hosted using **Streamlit Community Cloud**
+    """)
+
