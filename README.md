@@ -59,7 +59,7 @@
 To start the Streamlit dashboard locally:
 
 ```bash
-streamlit run app.py
+streamlit run oldmain.py
 ```
 
 ### 🔄 Data Input
